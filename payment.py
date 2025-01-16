@@ -17,11 +17,19 @@ from prometheus_client import Counter, Histogram
 app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
 
-CART = os.getenv('CART_HOST', 'cart')
-CART_PORT = os.getenv('CART_PORT', 8080)
-USER = os.getenv('USER_HOST', 'user')
-USER_PORT = os.getenv('USER_PORT', 8080)
+# Function to sanitize hostnames by removing unwanted prefixes
+def sanitize_host(host):
+    return host.replace("tcp://", "").replace("http://", "").replace("https://", "")
+
+# Environment variables for services, sanitized to remove prefixes
+CART = sanitize_host(os.getenv('CART_HOST', 'cart'))
+CART_PORT = os.getenv('CART_PORT', '8080')
+USER = sanitize_host(os.getenv('USER_HOST', 'user'))
+USER_PORT = os.getenv('USER_PORT', '8080')
 PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'https://google.com/')
+
+# Debug logging for sanitized values
+app.logger.info(f"Sanitized USER: {USER}, CART: {CART}, PAYMENT_GATEWAY: {PAYMENT_GATEWAY}")
 
 # Prometheus metrics
 PromMetrics = {
@@ -98,9 +106,7 @@ def pay(id):
     # Add to order history if user is not anonymous
     if not anonymous_user:
         try:
-            order_history_url = f"http://{USER}:{USER_PORT}/order/{id}"
-            app.logger.info(f"Adding to order history: {order_history_url}")
-            req = requests.post(order_history_url, 
+            req = requests.post(f"http://{USER}:{USER_PORT}/order/{id}", 
                                 data=json.dumps({'orderid': orderid, 'cart': cart}),
                                 headers={'Content-Type': 'application/json'})
             app.logger.info('order history returned {}'.format(req.status_code))
@@ -110,9 +116,7 @@ def pay(id):
 
     # Delete cart
     try:
-        cart_delete_url = f"http://{CART}:{CART_PORT}/cart/{id}"
-        app.logger.info(f"Deleting cart: {cart_delete_url}")
-        req = requests.delete(cart_delete_url)
+        req = requests.delete(f"http://{CART}:{CART_PORT}/cart/{id}")
         app.logger.info('cart delete returned {}'.format(req.status_code))
         if req.status_code != 200:
             return 'order history update error', req.status_code
