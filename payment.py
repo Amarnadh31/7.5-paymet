@@ -60,7 +60,9 @@ def pay(id):
 
     # Check if user exists
     try:
-        req = requests.get(f'http://{USER}:{USER_PORT}/check/{id}')
+        user_service_url = f"http://{USER}:{USER_PORT}/check/{id}"
+        app.logger.info(f"Checking user at: {user_service_url}")
+        req = requests.get(user_service_url)
         if req.status_code == 200:
             anonymous_user = False
     except requests.exceptions.RequestException as err:
@@ -96,7 +98,9 @@ def pay(id):
     # Add to order history if user is not anonymous
     if not anonymous_user:
         try:
-            req = requests.post(f'http://{user}:8080/order/{id}'.format(user=USER, id=id), 
+            order_history_url = f"http://{USER}:{USER_PORT}/order/{id}"
+            app.logger.info(f"Adding to order history: {order_history_url}")
+            req = requests.post(order_history_url, 
                                 data=json.dumps({'orderid': orderid, 'cart': cart}),
                                 headers={'Content-Type': 'application/json'})
             app.logger.info('order history returned {}'.format(req.status_code))
@@ -106,40 +110,41 @@ def pay(id):
 
     # Delete cart
     try:
-        req = requests.delete(f'http://{CART}:{CART_PORT}/cart/{id}'.format(cart=CART, id=id));
+        cart_delete_url = f"http://{CART}:{CART_PORT}/cart/{id}"
+        app.logger.info(f"Deleting cart: {cart_delete_url}")
+        req = requests.delete(cart_delete_url)
         app.logger.info('cart delete returned {}'.format(req.status_code))
+        if req.status_code != 200:
+            return 'order history update error', req.status_code
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
         return str(err), 500
-    if req.status_code != 200:
-        return 'order history update error', req.status_code
 
     return jsonify({'orderid': orderid})
 
 def queueOrder(order):
     app.logger.info('queue order')
 
-    # parent_span = ot.tracer.active_span
-    # with ot.tracer.start_active_span('queueOrder', child_of=parent_span,
-    #                                  tags={'exchange': Publisher.EXCHANGE, 'key': Publisher.ROUTING_KEY}) as tscope:
-    #     tscope.span.set_tag('span.kind', 'intermediate')
-    #     tscope.span.log_kv({'orderid': order.get('orderid')})
-    #     with ot.tracer.start_active_span('rabbitmq', child_of=tscope.span,
-    #                                      tags={'exchange': Publisher.EXCHANGE, 'sort': 'publish', 'address': Publisher.HOST, 'key': Publisher.ROUTING_KEY}) as scope:
+    parent_span = ot.tracer.active_span
+    with ot.tracer.start_active_span('queueOrder', child_of=parent_span,
+                                     tags={'exchange': Publisher.EXCHANGE, 'key': Publisher.ROUTING_KEY}) as tscope:
+        tscope.span.set_tag('span.kind', 'intermediate')
+        tscope.span.log_kv({'orderid': order.get('orderid')})
+        with ot.tracer.start_active_span('rabbitmq', child_of=tscope.span,
+                                         tags={'exchange': Publisher.EXCHANGE, 'sort': 'publish', 'address': Publisher.HOST, 'key': Publisher.ROUTING_KEY}) as scope:
 
             # Optionally add delay for demo requirements
-    delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
-    time.sleep(delay / 1000)
+            delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
+            time.sleep(delay / 1000)
 
-    headers = {}
-    publisher.publish(order, headers)
+            headers = {}
+            ot.tracer.inject(scope.span.context, ot.Format.HTTP_HEADERS, headers)
+            app.logger.info('msg headers {}'.format(headers))
+
+            publisher.publish(order, headers)
 
 def countItems(items):
-    count = 0
-    for item in items:
-        if item.get('sku') != 'SHIP':
-            count += item.get('qty')
-    return count
+    return sum(item.get('qty', 0) for item in items if item.get('sku') != 'SHIP')
 
 # Initialize RabbitMQ publisher
 publisher = Publisher(app.logger)
