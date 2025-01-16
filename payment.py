@@ -119,26 +119,27 @@ def pay(id):
 def queueOrder(order):
     app.logger.info('queue order')
 
-    parent_span = ot.tracer.active_span
-    with ot.tracer.start_active_span('queueOrder', child_of=parent_span,
-                                     tags={'exchange': Publisher.EXCHANGE, 'key': Publisher.ROUTING_KEY}) as tscope:
-        tscope.span.set_tag('span.kind', 'intermediate')
-        tscope.span.log_kv({'orderid': order.get('orderid')})
-        with ot.tracer.start_active_span('rabbitmq', child_of=tscope.span,
-                                         tags={'exchange': Publisher.EXCHANGE, 'sort': 'publish', 'address': Publisher.HOST, 'key': Publisher.ROUTING_KEY}) as scope:
+    # parent_span = ot.tracer.active_span
+    # with ot.tracer.start_active_span('queueOrder', child_of=parent_span,
+    #                                  tags={'exchange': Publisher.EXCHANGE, 'key': Publisher.ROUTING_KEY}) as tscope:
+    #     tscope.span.set_tag('span.kind', 'intermediate')
+    #     tscope.span.log_kv({'orderid': order.get('orderid')})
+    #     with ot.tracer.start_active_span('rabbitmq', child_of=tscope.span,
+    #                                      tags={'exchange': Publisher.EXCHANGE, 'sort': 'publish', 'address': Publisher.HOST, 'key': Publisher.ROUTING_KEY}) as scope:
 
             # Optionally add delay for demo requirements
-            delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
-            time.sleep(delay / 1000)
+    delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
+    time.sleep(delay / 1000)
 
-            headers = {}
-            ot.tracer.inject(scope.span.context, ot.Format.HTTP_HEADERS, headers)
-            app.logger.info('msg headers {}'.format(headers))
-
-            publisher.publish(order, headers)
+    headers = {}
+    publisher.publish(order, headers)
 
 def countItems(items):
-    return sum(item.get('qty', 0) for item in items if item.get('sku') != 'SHIP')
+    count = 0
+    for item in items:
+        if item.get('sku') != 'SHIP':
+            count += item.get('qty')
+    return count
 
 # Initialize RabbitMQ publisher
 publisher = Publisher(app.logger)
