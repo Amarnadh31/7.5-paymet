@@ -1,4 +1,3 @@
-import instana
 import os
 import sys
 import time
@@ -22,14 +21,14 @@ def sanitize_host(host):
     return host.replace("tcp://", "").replace("http://", "").replace("https://", "")
 
 # Environment variables for services, sanitized to remove prefixes
-CART = sanitize_host(os.getenv('CART_HOST', 'cart'))
+CART_HOST = sanitize_host(os.getenv('CART_HOST', 'cart'))
 CART_PORT = os.getenv('CART_PORT', '8080')
-USER = sanitize_host(os.getenv('USER_HOST', 'user'))
+USER_HOST = sanitize_host(os.getenv('USER_HOST', 'user'))
 USER_PORT = os.getenv('USER_PORT', '8080')
 PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'https://google.com/')
 
 # Debug logging for sanitized values
-app.logger.info(f"Sanitized USER: {USER}, CART: {CART}, PAYMENT_GATEWAY: {PAYMENT_GATEWAY}")
+app.logger.info(f"Sanitized USER_HOST: {USER_HOST}, CART_HOST: {CART_HOST}, PAYMENT_GATEWAY: {PAYMENT_GATEWAY}")
 
 # Prometheus metrics
 PromMetrics = {
@@ -68,13 +67,13 @@ def pay(id):
 
     # Check if user exists
     try:
-        user_service_url = f"http://{USER}:{USER_PORT}/check/{id}"
+        user_service_url = f"http://{USER_HOST}:{USER_PORT}/check/{id}"
         app.logger.info(f"Checking user at: {user_service_url}")
         req = requests.get(user_service_url)
         if req.status_code == 200:
             anonymous_user = False
     except requests.exceptions.RequestException as err:
-        app.logger.error(err)
+        app.logger.error(f"Failed to connect to {user_service_url}: {err}")
         return str(err), 500
 
     # Validate cart
@@ -106,7 +105,7 @@ def pay(id):
     # Add to order history if user is not anonymous
     if not anonymous_user:
         try:
-            req = requests.post(f"http://{USER}:{USER_PORT}/order/{id}", 
+            req = requests.post(f"http://{USER_HOST}:{USER_PORT}/order/{id}", 
                                 data=json.dumps({'orderid': orderid, 'cart': cart}),
                                 headers={'Content-Type': 'application/json'})
             app.logger.info('order history returned {}'.format(req.status_code))
@@ -116,7 +115,7 @@ def pay(id):
 
     # Delete cart
     try:
-        req = requests.delete(f"http://{CART}:{CART_PORT}/cart/{id}")
+        req = requests.delete(f"http://{CART_HOST}:{CART_PORT}/cart/{id}")
         app.logger.info('cart delete returned {}'.format(req.status_code))
         if req.status_code != 200:
             return 'order history update error', req.status_code
