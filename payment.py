@@ -96,7 +96,7 @@ def pay(id):
     # Add to order history if user is not anonymous
     if not anonymous_user:
         try:
-            req = requests.post(f'http://{USER}:{USER_PORT}/order/{id}', 
+            req = requests.post(f'http://{user}:8080/order/{id}'.format(user=USER, id=id), 
                                 data=json.dumps({'orderid': orderid, 'cart': cart}),
                                 headers={'Content-Type': 'application/json'})
             app.logger.info('order history returned {}'.format(req.status_code))
@@ -106,13 +106,13 @@ def pay(id):
 
     # Delete cart
     try:
-        req = requests.delete(f'http://{CART}:{CART_PORT}/cart/{id}')
+        req = requests.delete(f'http://{CART}:{CART_PORT}/cart/{id}'.format(cart=CART, id=id));
         app.logger.info('cart delete returned {}'.format(req.status_code))
-        if req.status_code != 200:
-            return 'order history update error', req.status_code
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
         return str(err), 500
+    if req.status_code != 200:
+        return 'order history update error', req.status_code
 
     return jsonify({'orderid': orderid})
 
